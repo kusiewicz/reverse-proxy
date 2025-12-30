@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -10,19 +11,51 @@ type gatewayHandler struct{}
 
 func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
+	// query := r.URL.Query()
+	method := r.Method
+
+	// nameFromQuery := query.Get("name")
 
 	if path == "/api/a" || strings.HasPrefix(path, "/api/a/") {
-		log.Println("would forward to backend A")
-		w.WriteHeader(http.StatusOK)
-		w.Write(([]byte("would forward to backend A")))
-		return
+		if method == "GET" {
+			resp, err := http.Get("http://localhost:8081/hello")
+
+			if err != nil {
+				log.Println("Error when accessing /a")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Internal Server Error"))
+				return
+			}
+
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+
+			w.WriteHeader(http.StatusOK)
+			w.Write(body)
+			return
+		}
 	}
 
 	if path == "/api/b" || strings.HasPrefix(path, "/api/b/") {
-		log.Println("would forward to backend B")
-		w.WriteHeader(http.StatusOK)
-		w.Write(([]byte("would forward to backend B")))
-		return
+		if method == "GET" {
+			resp, err := http.Get("http://localhost:8082/hello")
+
+			if err != nil {
+				log.Println("Error when accessing /a")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Internal Server Error"))
+				return
+			}
+
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+
+			w.WriteHeader(http.StatusOK)
+			w.Write(body)
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusNotFound)
