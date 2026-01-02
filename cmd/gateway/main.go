@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -9,38 +10,74 @@ import (
 
 type gatewayHandler struct{}
 
+func cutPrefixPath(path string, prefix string) string {
+	new, _ := strings.CutPrefix(path, prefix)
+
+	return new
+}
+
 func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{}
+
 	path := r.URL.Path
-	// query := r.URL.Query()
+	query := r.URL.Query().Encode()
 	method := r.Method
+
+	log.Println(path)
 
 	// nameFromQuery := query.Get("name")
 
 	if path == "/api/a" || strings.HasPrefix(path, "/api/a/") {
-		if method == "GET" {
-			resp, err := http.Get("http://localhost:8081/hello")
+		// resp, err := http.Get("http://localhost:8081/hello")
 
-			if err != nil {
-				log.Println("Error when accessing /a")
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("Internal Server Error"))
-				return
-			}
+		prefixToCut := "/api/a"
 
-			defer resp.Body.Close()
+		if strings.HasPrefix(path, "/api/a/") {
+			prefixToCut = "/api/a/"
+		}
 
-			body, err := io.ReadAll(resp.Body)
+		requestRealPath := cutPrefixPath(path, prefixToCut)
 
-			w.WriteHeader(http.StatusOK)
-			w.Write(body)
+		fullUrl := "http://localhost:8081/hello" + requestRealPath + query
+
+		fmt.Println(fullUrl)
+
+		req, err := http.NewRequest(method, fullUrl, nil)
+
+		resp, err := client.Do(req)
+
+		headers := resp.Header
+		statusCode := resp.StatusCode
+
+		if err != nil {
+			log.Println("Error when accessing /a")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Internal Server Error"))
 			return
 		}
+
+		defer resp.Body.Close()
+
+		for key, valuesArray := range headers {
+			for _, header := range valuesArray {
+				w.Header().Add(key, header)
+			}
+		}
+
+		body, err := io.ReadAll(resp.Body)
+
+		w.WriteHeader(statusCode)
+		w.Write(body)
+		return
 	}
 
 	if path == "/api/b" || strings.HasPrefix(path, "/api/b/") {
 		if method == "GET" {
 			resp, err := http.Get("http://localhost:8082/hello")
 
+			headers := resp.Header
+			statusCode := resp.StatusCode
+
 			if err != nil {
 				log.Println("Error when accessing /a")
 				w.WriteHeader(http.StatusInternalServerError)
@@ -50,9 +87,15 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			defer resp.Body.Close()
 
+			for key, valuesArray := range headers {
+				for _, header := range valuesArray {
+					w.Header().Add(key, header)
+				}
+			}
+
 			body, err := io.ReadAll(resp.Body)
 
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(statusCode)
 			w.Write(body)
 			return
 		}
