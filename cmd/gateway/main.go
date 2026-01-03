@@ -16,89 +16,90 @@ func cutPrefixPath(path string, prefix string) string {
 	return new
 }
 
-func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func genereateRequestURL(serverUrl string, path string, query string) string {
+	requestUrl := serverUrl + "/" + path
+
+	if len(query) != 0 {
+		requestUrl += "?" + query
+	}
+
+	return requestUrl
+}
+
+func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string) {
 	client := &http.Client{}
 
 	path := r.URL.Path
 	query := r.URL.Query().Encode()
 	method := r.Method
 
-	log.Println(path)
+	strippedPath := cutPrefixPath(path, routePrefix)
 
-	// nameFromQuery := query.Get("name")
+	requestURL := genereateRequestURL(serverURL, strippedPath, query)
+
+	req, err := http.NewRequest(method, requestURL, nil)
+
+	fmt.Println("serverURL", serverURL)
+	fmt.Println("routePrefix", routePrefix)
+	fmt.Println("path", path)
+	fmt.Println("requestURL", requestURL)
+
+	if err != nil {
+		log.Println("Error when creating request")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+		return
+	}
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.Println("Error when accessing " + routePrefix)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+		return
+	}
+
+	headers := resp.Header
+	statusCode := resp.StatusCode
+
+	fmt.Println("err", err)
+
+	defer resp.Body.Close()
+
+	for key, values := range headers {
+		for _, header := range values {
+			w.Header().Add(key, header)
+		}
+	}
+
+	body, err := io.ReadAll(resp.Body)
+
+	w.WriteHeader(statusCode)
+	w.Write(body)
+}
+
+func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
 
 	if path == "/api/a" || strings.HasPrefix(path, "/api/a/") {
-		// resp, err := http.Get("http://localhost:8081/hello")
-
-		prefixToCut := "/api/a"
-
+		routePrefix := "/api/a"
 		if strings.HasPrefix(path, "/api/a/") {
-			prefixToCut = "/api/a/"
+			routePrefix = "/api/a/"
 		}
 
-		requestRealPath := cutPrefixPath(path, prefixToCut)
-
-		fullUrl := "http://localhost:8081/hello" + requestRealPath + query
-
-		fmt.Println(fullUrl)
-
-		req, err := http.NewRequest(method, fullUrl, nil)
-
-		resp, err := client.Do(req)
-
-		headers := resp.Header
-		statusCode := resp.StatusCode
-
-		if err != nil {
-			log.Println("Error when accessing /a")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Internal Server Error"))
-			return
-		}
-
-		defer resp.Body.Close()
-
-		for key, valuesArray := range headers {
-			for _, header := range valuesArray {
-				w.Header().Add(key, header)
-			}
-		}
-
-		body, err := io.ReadAll(resp.Body)
-
-		w.WriteHeader(statusCode)
-		w.Write(body)
+		handleRequest(w, r, "http://localhost:8081", routePrefix)
 		return
 	}
 
 	if path == "/api/b" || strings.HasPrefix(path, "/api/b/") {
-		if method == "GET" {
-			resp, err := http.Get("http://localhost:8082/hello")
-
-			headers := resp.Header
-			statusCode := resp.StatusCode
-
-			if err != nil {
-				log.Println("Error when accessing /a")
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("Internal Server Error"))
-				return
-			}
-
-			defer resp.Body.Close()
-
-			for key, valuesArray := range headers {
-				for _, header := range valuesArray {
-					w.Header().Add(key, header)
-				}
-			}
-
-			body, err := io.ReadAll(resp.Body)
-
-			w.WriteHeader(statusCode)
-			w.Write(body)
-			return
+		routePrefix := "/api/b"
+		if strings.HasPrefix(path, "/api/b/") {
+			routePrefix = "/api/b/"
 		}
+
+		handleRequest(w, r, "http://localhost:8082", routePrefix)
+		return
 	}
 
 	w.WriteHeader(http.StatusNotFound)

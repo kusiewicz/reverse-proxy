@@ -13,10 +13,22 @@ func main() {
 		Handler: mux,
 	}
 
-	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+
 		w.Header().Add("X-Backend-Name", "backend-B")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Hello from backend B"))
+	})
+
+	mux.HandleFunc("/query-params", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("X-Backend-Name", "backend-B")
+		w.WriteHeader(http.StatusOK)
+
+		w.Write([]byte("list of query params " + r.URL.Query().Encode()))
 	})
 
 	mux.HandleFunc("/error", func(w http.ResponseWriter, r *http.Request) {
