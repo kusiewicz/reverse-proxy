@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -36,13 +35,15 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 	strippedPath := cutPrefixPath(path, routePrefix)
 
 	requestURL := genereateRequestURL(serverURL, strippedPath, query)
+	req, err := http.NewRequest(method, requestURL, r.Body)
 
-	req, err := http.NewRequest(method, requestURL, nil)
+	requestHeaders := r.Header
 
-	fmt.Println("serverURL", serverURL)
-	fmt.Println("routePrefix", routePrefix)
-	fmt.Println("path", path)
-	fmt.Println("requestURL", requestURL)
+	for key, values := range requestHeaders {
+		for _, header := range values {
+			req.Header.Add(key, header)
+		}
+	}
 
 	if err != nil {
 		log.Println("Error when creating request")
@@ -60,26 +61,27 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 		return
 	}
 
-	headers := resp.Header
-	statusCode := resp.StatusCode
-
-	fmt.Println("err", err)
+	responseHeaders := resp.Header
+	responseStatusCode := resp.StatusCode
 
 	defer resp.Body.Close()
 
-	for key, values := range headers {
+	for key, values := range responseHeaders {
 		for _, header := range values {
 			w.Header().Add(key, header)
 		}
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	w.WriteHeader(responseStatusCode)
 
-	w.WriteHeader(statusCode)
-	w.Write(body)
+
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		w.Write([]byte("Internal Server Error"))
+	}
 }
 
 func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 	path := r.URL.Path
 
 	if path == "/api/a" || strings.HasPrefix(path, "/api/a/") {
@@ -108,7 +110,6 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	mux := http.NewServeMux()
-
 	s := &http.Server{
 		Addr:    ":8090",
 		Handler: mux,
