@@ -25,6 +25,11 @@ func genereateRequestURL(serverUrl string, path string, query string) string {
 	return requestUrl
 }
 
+func logError(proxyError error, routePrefix, serverURL, path, query, method, stage string) {
+	log.Printf("Error: %v on stage: %s: route: %s, server: %s, path: %s, query: %s, method: %s", proxyError, stage, routePrefix, serverURL, path, query, method)
+	return
+}
+
 func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string) {
 	client := &http.Client{}
 
@@ -39,23 +44,23 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 
 	requestHeaders := r.Header
 
+	if err != nil {
+		logError(err, routePrefix, serverURL, path, query, method, "request creating")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+		return
+	}
+
 	for key, values := range requestHeaders {
 		for _, header := range values {
 			req.Header.Add(key, header)
 		}
 	}
 
-	if err != nil {
-		log.Println("Error when creating request")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Internal Server Error"))
-		return
-	}
-
 	resp, err := client.Do(req)
 
 	if err != nil {
-		log.Println("Error when accessing " + routePrefix)
+		logError(err, routePrefix, serverURL, path, query, method, "request")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Internal Server Error"))
 		return
@@ -76,7 +81,8 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 
 
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		w.Write([]byte("Internal Server Error"))
+		logError(err, routePrefix, serverURL, path, query, method, "response streaming")
+		return
 	}
 }
 
@@ -105,7 +111,7 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNotFound)
-	w.Write(([]byte("not found")))
+	w.Write(([]byte("Not found")))
 }
 
 func main() {
