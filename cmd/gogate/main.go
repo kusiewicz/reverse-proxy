@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"io"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type gatewayHandler struct{}
@@ -15,32 +17,35 @@ func cutPrefixPath(path string, prefix string) string {
 	return new
 }
 
-func genereateRequestURL(serverUrl string, path string, query string) string {
-	requestUrl := serverUrl + "/" + path
+func generateRequestURL(serverURL string, path string, query string) string {
+	requestURL := serverURL + "/" + path
 
 	if len(query) != 0 {
-		requestUrl += "?" + query
+		requestURL += "?" + query
 	}
 
-	return requestUrl
+	return requestURL
 }
 
 func logError(proxyError error, routePrefix, serverURL, path, query, method, stage string) {
 	log.Printf("Error: %v on stage: %s: route: %s, server: %s, path: %s, query: %s, method: %s", proxyError, stage, routePrefix, serverURL, path, query, method)
-	return
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string) {
+	defaultTimeout := 15 * time.Second
 	client := &http.Client{}
 
 	path := r.URL.Path
 	query := r.URL.Query().Encode()
 	method := r.Method
 
+	ctx, cancel := context.WithTimeout(r.Context(), defaultTimeout)
+	defer cancel()
+
 	strippedPath := cutPrefixPath(path, routePrefix)
 
-	requestURL := genereateRequestURL(serverURL, strippedPath, query)
-	req, err := http.NewRequest(method, requestURL, r.Body)
+	requestURL := generateRequestURL(serverURL, strippedPath, query)
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, r.Body)
 
 	requestHeaders := r.Header
 
@@ -60,9 +65,22 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 	resp, err := client.Do(req)
 
 	if err != nil {
+		errorStatusCode := http.StatusBadGateway
+		errorMessage := "Bad Gateway"
+
+		if ctx.Err() == context.DeadlineExceeded {
+			errorStatusCode = http.StatusGatewayTimeout
+			errorMessage = "Gateway Timeout"
+		}
+
+		if ctx.Err() == context.Canceled {
+			logError(err, routePrefix, serverURL, path, query, method, "request")
+			return
+		}
+
 		logError(err, routePrefix, serverURL, path, query, method, "request")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Internal Server Error"))
+		w.WriteHeader(errorStatusCode)
+		w.Write([]byte(errorMessage))
 		return
 	}
 
@@ -78,7 +96,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 	}
 
 	w.WriteHeader(responseStatusCode)
-
 
 	if _, err := io.Copy(w, resp.Body); err != nil {
 		logError(err, routePrefix, serverURL, path, query, method, "response streaming")

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"io"
 	"log"
 	"net/http"
-	"io"
+	"strconv"
+	"time"
 )
 
 func main() {
@@ -28,7 +30,20 @@ func main() {
 	mux.HandleFunc("/query-params", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("X-Backend-Name", "backend-B")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("list of query params " + r.URL.Query().Encode()))
+
+		query := r.URL.Query()
+
+		sleepTime := 0
+
+		numberedSleep, err := strconv.Atoi(query.Get("sleep"))
+
+		if err == nil {
+			sleepTime = numberedSleep
+		}
+
+		time.Sleep(time.Duration(sleepTime) * time.Second)
+
+		w.Write([]byte("sleeped for" + strconv.FormatInt(int64(sleepTime), 10) + "seconds"))
 	})
 
 	mux.HandleFunc("/error", func(w http.ResponseWriter, r *http.Request) {
