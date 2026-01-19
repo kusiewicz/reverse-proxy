@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -48,6 +49,16 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 	req, err := http.NewRequestWithContext(ctx, method, requestURL, r.Body)
 
 	requestHeaders := r.Header
+	hopByHopHeaders := map[string]struct{}{
+		"connection":          {},
+		"keep-alive":          {},
+		"proxy-authenticate":  {},
+		"proxy-authorization": {},
+		"te":                  {},
+		"trailer":             {},
+		"transfer-encoding":   {},
+		"upgrade":             {},
+	}
 
 	if err != nil {
 		logError(err, routePrefix, serverURL, path, query, method, "request creating")
@@ -56,8 +67,30 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 		return
 	}
 
+	requestConnectionHeadersToDelete := make(map[string]struct{})
+
 	for key, values := range requestHeaders {
+		loweredKey := strings.ToLower(key)
+
+		if loweredKey == "connection" {
+			for _, v := range values {
+				listOfHeaders := strings.Split(v, ",")
+
+				for _, v := range listOfHeaders {
+					requestConnectionHeadersToDelete[strings.ToLower(strings.TrimSpace(v))] = struct{}{}
+				}
+			}
+		}
+
+		if _, ok := requestConnectionHeadersToDelete[loweredKey]; ok {
+			continue
+		}
+		if _, ok := hopByHopHeaders[loweredKey]; ok {
+			continue
+		}
+
 		for _, header := range values {
+			fmt.Printf("k: %q, v: %q \n", key, header)
 			req.Header.Add(key, header)
 		}
 	}
@@ -89,7 +122,28 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 
 	defer resp.Body.Close()
 
+	responseConnectionHeadersToDelete := make(map[string]struct{})
+
 	for key, values := range responseHeaders {
+		loweredKey := strings.ToLower(key)
+
+		if key == "Connection" {
+			for _, v := range values {
+				listOfHeaders := strings.Split(v, ",")
+
+				for _, v := range listOfHeaders {
+					responseConnectionHeadersToDelete[strings.ToLower(strings.TrimSpace(v))] = struct{}{}
+				}
+			}
+		}
+
+		if _, ok := responseConnectionHeadersToDelete[loweredKey]; ok {
+			continue
+		}
+		if _, ok := hopByHopHeaders[loweredKey]; ok {
+			continue
+		}
+
 		for _, header := range values {
 			w.Header().Add(key, header)
 		}
@@ -97,6 +151,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 
 	w.WriteHeader(responseStatusCode)
 
+	// io.Copy streaming instead of ReadAll
 	if _, err := io.Copy(w, resp.Body); err != nil {
 		logError(err, routePrefix, serverURL, path, query, method, "response streaming")
 		return
