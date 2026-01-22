@@ -12,6 +12,28 @@ import (
 
 type gatewayHandler struct{}
 
+var hopByHopHeaders = map[string]struct{}{
+	"connection":          {},
+	"keep-alive":          {},
+	"proxy-authenticate":  {},
+	"proxy-authorization": {},
+	"te":                  {},
+	"trailer":             {},
+	"transfer-encoding":   {},
+	"upgrade":             {},
+}
+
+func connectionHeaderTokens(connectionHeaderValue string) map[string]struct{} {
+	connectionTokensToDelete := make(map[string]struct{})
+
+	listOfConnectionHeaderValues := strings.Split(connectionHeaderValue, ",")
+	for _, v := range listOfConnectionHeaderValues {
+		connectionTokensToDelete[strings.ToLower(strings.TrimSpace(v))] = struct{}{}
+	}
+
+	return connectionTokensToDelete
+}
+
 func cutPrefixPath(path string, prefix string) string {
 	new, _ := strings.CutPrefix(path, prefix)
 
@@ -49,16 +71,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 	req, err := http.NewRequestWithContext(ctx, method, requestURL, r.Body)
 
 	requestHeaders := r.Header
-	hopByHopHeaders := map[string]struct{}{
-		"connection":          {},
-		"keep-alive":          {},
-		"proxy-authenticate":  {},
-		"proxy-authorization": {},
-		"te":                  {},
-		"trailer":             {},
-		"transfer-encoding":   {},
-		"upgrade":             {},
-	}
 
 	if err != nil {
 		logError(err, routePrefix, serverURL, path, query, method, "request creating")
@@ -69,18 +81,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 
 	requestConnectionHeadersToDelete := make(map[string]struct{})
 
+	connectionHeader := r.Header.Get("Connection")
+
+	if connectionHeader != "" {
+		requestConnectionHeadersToDelete = connectionHeaderTokens(connectionHeader)
+	}
+
 	for key, values := range requestHeaders {
 		loweredKey := strings.ToLower(key)
-
-		if loweredKey == "connection" {
-			for _, v := range values {
-				listOfHeaders := strings.Split(v, ",")
-
-				for _, v := range listOfHeaders {
-					requestConnectionHeadersToDelete[strings.ToLower(strings.TrimSpace(v))] = struct{}{}
-				}
-			}
-		}
 
 		if _, ok := requestConnectionHeadersToDelete[loweredKey]; ok {
 			continue
@@ -124,18 +132,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 
 	responseConnectionHeadersToDelete := make(map[string]struct{})
 
+	connectionHeader = responseHeaders.Get("Connection")
+
+	if connectionHeader != "" {
+		responseConnectionHeadersToDelete = connectionHeaderTokens(connectionHeader)
+	}
+
 	for key, values := range responseHeaders {
 		loweredKey := strings.ToLower(key)
-
-		if key == "Connection" {
-			for _, v := range values {
-				listOfHeaders := strings.Split(v, ",")
-
-				for _, v := range listOfHeaders {
-					responseConnectionHeadersToDelete[strings.ToLower(strings.TrimSpace(v))] = struct{}{}
-				}
-			}
-		}
 
 		if _, ok := responseConnectionHeadersToDelete[loweredKey]; ok {
 			continue
@@ -159,7 +163,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 }
 
 func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
 	path := r.URL.Path
 
 	if path == "/api/a" || strings.HasPrefix(path, "/api/a/") {

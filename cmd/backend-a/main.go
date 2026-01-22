@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 )
@@ -40,9 +39,6 @@ func (q *queryParamsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (c *checkBodyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("X-Backend-Name", "backend-a")
 	w.WriteHeader(http.StatusOK)
-
-	fmt.Println("request body", r.Body)
-	fmt.Println("request method", r.Method)
 }
 
 func main() {
