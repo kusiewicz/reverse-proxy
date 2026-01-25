@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	middleware "github.com/kusiewicz/reverse-proxy/internal/middleware"
 	httpproxy "github.com/kusiewicz/reverse-proxy/internal/proxy/http"
 )
 
@@ -43,12 +44,14 @@ func main() {
 		Addr:    ":8090",
 		Handler: mux,
 	}
+	handler := new(gatewayHandler)
+	handlerWithMiddleware := middleware.RequestID(handler)
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-	mux.Handle("/", new(gatewayHandler))
+	mux.Handle("/", handlerWithMiddleware)
 
 	if err := s.ListenAndServe(); err != nil {
 		log.Fatal(err)
