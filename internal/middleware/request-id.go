@@ -9,7 +9,7 @@ import (
 
 type requestIDHeaderKey struct{}
 
-var requestIDHeaderKeyString = "X-Request-ID"
+const RequestIDHeaderName = "X-Request-ID"
 
 func RequestIdFrom(ctx context.Context) (string, bool) {
 	v := ctx.Value(requestIDHeaderKey{})
@@ -19,10 +19,10 @@ func RequestIdFrom(ctx context.Context) (string, bool) {
 
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestIdHeaderValue := r.Header.Get(requestIDHeaderKeyString)
+		requestIdHeaderValue := r.Header.Get(RequestIDHeaderName)
 
 		if requestIdHeaderValue != "" {
-			w.Header().Set(requestIDHeaderKeyString, requestIdHeaderValue)
+			w.Header().Set(RequestIDHeaderName, requestIdHeaderValue)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -33,8 +33,8 @@ func RequestID(next http.Handler) http.Handler {
 
 		reqWithContext := r.WithContext(ctx)
 
-		r.Header.Set(requestIDHeaderKeyString, requestIdHeaderValue)
-		w.Header().Set(requestIDHeaderKeyString, requestIdHeaderValue)
+		r.Header.Set(RequestIDHeaderName, requestIdHeaderValue)
+		w.Header().Set(RequestIDHeaderName, requestIdHeaderValue)
 
 		next.ServeHTTP(w, reqWithContext)
 	})

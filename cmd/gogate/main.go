@@ -44,14 +44,16 @@ func main() {
 		Addr:    ":8090",
 		Handler: mux,
 	}
+
 	handler := new(gatewayHandler)
-	handlerWithMiddleware := middleware.RequestID(handler)
+	handlerWithMiddleware := middleware.AccessLog(handler)
+	handlerAccessLog := middleware.RequestID((handlerWithMiddleware))
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-	mux.Handle("/", handlerWithMiddleware)
+	mux.Handle("/", handlerAccessLog)
 
 	if err := s.ListenAndServe(); err != nil {
 		log.Fatal(err)
