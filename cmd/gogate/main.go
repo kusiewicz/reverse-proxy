@@ -45,15 +45,21 @@ func main() {
 		Handler: mux,
 	}
 
-	handler := new(gatewayHandler)
-	handlerWithMiddleware := middleware.AccessLog(handler)
-	handlerAccessLog := middleware.RequestID((handlerWithMiddleware))
+	var h http.Handler
+	h = new(gatewayHandler)
+	h = middleware.AccessLog(h)
+	h = middleware.RequestID(h)
+	h = middleware.PanicRecovery(h)
+
+	// handler := new(gatewayHandler)
+	// handlerWithMiddleware := middleware.AccessLog(handler)
+	// handlerAccessLog := middleware.RequestID((handlerWithMiddleware))
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-	mux.Handle("/", handlerAccessLog)
+	mux.Handle("/", h)
 
 	if err := s.ListenAndServe(); err != nil {
 		log.Fatal(err)
