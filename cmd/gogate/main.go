@@ -20,7 +20,7 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			routePrefix = "/api/a/"
 		}
 
-		httpproxy.HandleRequest(w, r, "http://localhost:8081", routePrefix)
+		httpproxy.HandleRequest(w, r, "http://localhost:8081", routePrefix, 15)
 		return
 	}
 
@@ -30,7 +30,7 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			routePrefix = "/api/b/"
 		}
 
-		httpproxy.HandleRequest(w, r, "http://localhost:8082", routePrefix)
+		httpproxy.HandleRequest(w, r, "http://localhost:8082", routePrefix, 15)
 		return
 	}
 
@@ -50,10 +50,6 @@ func main() {
 	h = middleware.AccessLog(h)
 	h = middleware.RequestID(h)
 	h = middleware.PanicRecovery(h)
-
-	// handler := new(gatewayHandler)
-	// handlerWithMiddleware := middleware.AccessLog(handler)
-	// handlerAccessLog := middleware.RequestID((handlerWithMiddleware))
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -51,15 +51,15 @@ func logError(proxyError error, routePrefix, serverURL, path, query, method, sta
 	log.Printf("Error: %v on stage: %s: route: %s, server: %s, path: %s, query: %s, method: %s", proxyError, stage, routePrefix, serverURL, path, query, method)
 }
 
-func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string) {
-	defaultTimeout := 15 * time.Second
+func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string, timeoutInSeconds int) {
+	timeout := time.Duration(timeoutInSeconds) * time.Second
 	client := &http.Client{}
 
 	path := r.URL.Path
 	query := r.URL.Query().Encode()
 	method := r.Method
 
-	ctx, cancel := context.WithTimeout(r.Context(), defaultTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
 	strippedPath := cutPrefixPath(path, routePrefix)

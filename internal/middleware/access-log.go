@@ -15,6 +15,7 @@ type ResponseWriterWrapper struct {
 func (rw *ResponseWriterWrapper) Header() http.Header {
 	return rw.inner.Header()
 }
+
 func (rw *ResponseWriterWrapper) Write(p []byte) (int, error) {
 	if rw.status == 0 {
 		rw.status = 200
@@ -23,6 +24,7 @@ func (rw *ResponseWriterWrapper) Write(p []byte) (int, error) {
 	rw.bytes += n
 	return n, err
 }
+
 func (rw *ResponseWriterWrapper) WriteHeader(statusCode int) {
 	if rw.status == 0 {
 		rw.status = statusCode
