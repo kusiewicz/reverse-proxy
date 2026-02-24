@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+type RequestConfig struct {
+	TimeoutInSeconds int
+	ConcurrencyLimit int
+}
+
 var hopByHopHeaders = map[string]struct{}{
 	"connection":          {},
 	"keep-alive":          {},
@@ -51,8 +56,8 @@ func logError(proxyError error, routePrefix, serverURL, path, query, method, sta
 	log.Printf("Error: %v on stage: %s: route: %s, server: %s, path: %s, query: %s, method: %s", proxyError, stage, routePrefix, serverURL, path, query, method)
 }
 
-func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string, timeoutInSeconds int) {
-	timeout := time.Duration(timeoutInSeconds) * time.Second
+func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string, cfg RequestConfig, requestSemaphore chan struct{}) {
+	timeout := time.Duration(cfg.TimeoutInSeconds) * time.Second
 	client := &http.Client{}
 
 	path := r.URL.Path
@@ -98,6 +103,9 @@ func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 			req.Header.Add(key, header)
 		}
 	}
+
+	<-requestSemaphore
+	defer func() { requestSemaphore <- struct{}{} }()
 
 	resp, err := client.Do(req)
 

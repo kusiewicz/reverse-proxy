@@ -9,7 +9,14 @@ import (
 	httpproxy "github.com/kusiewicz/reverse-proxy/internal/proxy/http"
 )
 
-type gatewayHandler struct{}
+type gatewayHandler struct {
+	sem chan struct{}
+}
+
+var cfg = httpproxy.RequestConfig{
+	TimeoutInSeconds: 15,
+	ConcurrencyLimit: 1,
+}
 
 func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
@@ -20,7 +27,7 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			routePrefix = "/api/a/"
 		}
 
-		httpproxy.HandleRequest(w, r, "http://localhost:8081", routePrefix, 15)
+		httpproxy.HandleRequest(w, r, "http://localhost:8081", routePrefix, cfg, g.sem)
 		return
 	}
 
@@ -30,7 +37,7 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			routePrefix = "/api/b/"
 		}
 
-		httpproxy.HandleRequest(w, r, "http://localhost:8082", routePrefix, 15)
+		httpproxy.HandleRequest(w, r, "http://localhost:8082", routePrefix, cfg, g.sem)
 		return
 	}
 
@@ -45,8 +52,15 @@ func main() {
 		Handler: mux,
 	}
 
+	concurrentRequestsSemaphore := make(chan struct{}, cfg.ConcurrencyLimit)
+	for i := 0; i < cfg.ConcurrencyLimit; i++ {
+		concurrentRequestsSemaphore <- struct{}{}
+	}
+
 	var h http.Handler
-	h = new(gatewayHandler)
+	h = &gatewayHandler{
+		sem: concurrentRequestsSemaphore,
+	}
 	h = middleware.AccessLog(h)
 	h = middleware.RequestID(h)
 	h = middleware.PanicRecovery(h)

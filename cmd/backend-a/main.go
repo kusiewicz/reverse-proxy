@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 )
 
 type helloHandler struct{}
@@ -29,6 +31,9 @@ func (h *errorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (q *queryParamsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Println("received header", r.Header)
+	sleep, _ := strconv.Atoi(r.URL.Query().Get("sleep"))
+
+	time.Sleep(time.Duration(sleep) * time.Second)
 
 	w.Header().Add("X-Backend-Name", "backend-a")
 	w.WriteHeader(http.StatusOK)
