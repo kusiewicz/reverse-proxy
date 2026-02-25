@@ -16,6 +16,7 @@ type gatewayHandler struct {
 var cfg = httpproxy.RequestConfig{
 	TimeoutInSeconds: 15,
 	ConcurrencyLimit: 1,
+	MaxRetries:       3,
 }
 
 func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -12,6 +12,7 @@ import (
 type RequestConfig struct {
 	TimeoutInSeconds int
 	ConcurrencyLimit int
+	MaxRetries       int
 }
 
 var hopByHopHeaders = map[string]struct{}{
@@ -54,6 +55,13 @@ func connectionHeaderTokens(connectionHeaderValue string) map[string]struct{} {
 
 func logError(proxyError error, routePrefix, serverURL, path, query, method, stage string) {
 	log.Printf("Error: %v on stage: %s: route: %s, server: %s, path: %s, query: %s, method: %s", proxyError, stage, routePrefix, serverURL, path, query, method)
+}
+
+func getIsRetryable(method string, statusCode int) bool {
+	if (statusCode == 502 || statusCode == 503 || statusCode == 504) && (method == "GET" || method == "HEAD") {
+		return true
+	}
+	return false
 }
 
 func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string, cfg RequestConfig, requestSemaphore chan struct{}) {
@@ -107,7 +115,36 @@ func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 	<-requestSemaphore
 	defer func() { requestSemaphore <- struct{}{} }()
 
+	// select {
+	// case <-requestSemaphore:
+	// 	defer func() { requestSemaphore <- struct{}{} }()
+	// default:
+	// 	w.WriteHeader(http.StatusGatewayTimeout)
+	// 	return
+	// }
+
 	resp, err := client.Do(req)
+
+	if err == nil && getIsRetryable(req.Method, resp.StatusCode) && cfg.MaxRetries > 0 {
+		for i := 0; i < cfg.MaxRetries; i++ {
+			select {
+			case <-time.After(500 * time.Millisecond):
+				if resp != nil {
+					resp.Body.Close()
+				}
+				resp, err = client.Do(req)
+			case <-ctx.Done():
+				if resp != nil {
+					resp.Body.Close()
+				}
+				return
+			}
+
+			if err == nil {
+				break
+			}
+		}
+	}
 
 	if err != nil {
 		errorStatusCode := http.StatusBadGateway
