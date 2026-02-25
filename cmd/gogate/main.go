@@ -28,6 +28,7 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			routePrefix = "/api/a/"
 		}
 
+		// wspoldziela semafor - do poprawy
 		httpproxy.HandleRequest(w, r, "http://localhost:8081", routePrefix, cfg, g.sem)
 		return
 	}
@@ -57,6 +58,12 @@ func main() {
 	for i := 0; i < cfg.ConcurrencyLimit; i++ {
 		concurrentRequestsSemaphore <- struct{}{}
 	}
+
+	// circuitBreaker := circuitBreaker{
+	// 	state:           "Closed",
+	// 	errorCounter:    10,
+	// 	openTimeSeconds: 30 * time.Second,
+	// }
 
 	var h http.Handler
 	h = &gatewayHandler{

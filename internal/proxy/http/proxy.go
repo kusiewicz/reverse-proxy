@@ -6,13 +6,30 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
+
+type circuitBreakerState string
+
+const (
+	StateClosed   circuitBreakerState = "Closed"
+	StateHalfOpen circuitBreakerState = "HalfOpen"
+	StateOpen     circuitBreakerState = "Open"
+)
+
+type circuitBreaker struct {
+	state           circuitBreakerState
+	errorCounter    int
+	openTimeSeconds time.Duration
+	mutex           sync.Mutex
+}
 
 type RequestConfig struct {
 	TimeoutInSeconds int
 	ConcurrencyLimit int
 	MaxRetries       int
+	CircuitBreaker   circuitBreaker
 }
 
 var hopByHopHeaders = map[string]struct{}{
