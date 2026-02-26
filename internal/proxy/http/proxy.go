@@ -18,18 +18,18 @@ const (
 	StateOpen     circuitBreakerState = "Open"
 )
 
-type circuitBreaker struct {
-	state           circuitBreakerState
-	errorCounter    int
-	openTimeSeconds time.Duration
-	mutex           sync.Mutex
+type CircuitBreaker struct {
+	State           circuitBreakerState
+	ErrorCounter    int
+	OpenTimeSeconds time.Duration
+	Mutex           sync.Mutex
 }
 
 type RequestConfig struct {
 	TimeoutInSeconds int
-	ConcurrencyLimit int
 	MaxRetries       int
-	CircuitBreaker   circuitBreaker
+	Sem              chan struct{}
+	CircuitBreaker   *CircuitBreaker
 }
 
 var hopByHopHeaders = map[string]struct{}{
@@ -81,7 +81,7 @@ func getIsRetryable(method string, statusCode int) bool {
 	return false
 }
 
-func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string, cfg RequestConfig, requestSemaphore chan struct{}) {
+func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string, cfg RequestConfig) {
 	timeout := time.Duration(cfg.TimeoutInSeconds) * time.Second
 	client := &http.Client{}
 
@@ -129,8 +129,8 @@ func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 		}
 	}
 
-	<-requestSemaphore
-	defer func() { requestSemaphore <- struct{}{} }()
+	<-cfg.Sem
+	defer func() { cfg.Sem <- struct{}{} }()
 
 	// select {
 	// case <-requestSemaphore:

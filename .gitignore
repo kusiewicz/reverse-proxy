@@ -1,0 +1,17 @@
+.DS_Store
+
+# Go build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Local toolchain/module/cache dirs (created by our verification runs)
+.gopath/
+.gocache/
+
+# Common local folders
+bin/
+tmp/

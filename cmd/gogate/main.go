@@ -4,19 +4,36 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	middleware "github.com/kusiewicz/reverse-proxy/internal/middleware"
 	httpproxy "github.com/kusiewicz/reverse-proxy/internal/proxy/http"
 )
 
 type gatewayHandler struct {
-	sem chan struct{}
+	configBackendA httpproxy.RequestConfig
+	configBackendB httpproxy.RequestConfig
 }
 
-var cfg = httpproxy.RequestConfig{
-	TimeoutInSeconds: 15,
-	ConcurrencyLimit: 1,
-	MaxRetries:       3,
+func prepareClientConfig(concurrencyLimit int, circuitErrorCounter int, circuitOpenTimeInSeconds int, requestTimeoutInSeconds int, requestMaxRetries int) httpproxy.RequestConfig {
+	concurrentRequestSemaphore := make(chan struct{}, concurrencyLimit)
+
+	for i := 0; i < concurrencyLimit; i++ {
+		concurrentRequestSemaphore <- struct{}{}
+	}
+
+	circuitBreaker := &httpproxy.CircuitBreaker{
+		State:           httpproxy.StateClosed,
+		ErrorCounter:    circuitErrorCounter,
+		OpenTimeSeconds: time.Duration(circuitOpenTimeInSeconds) * time.Second,
+	}
+
+	return httpproxy.RequestConfig{
+		TimeoutInSeconds: requestTimeoutInSeconds,
+		MaxRetries:       requestMaxRetries,
+		Sem:              concurrentRequestSemaphore,
+		CircuitBreaker:   circuitBreaker,
+	}
 }
 
 func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -28,8 +45,7 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			routePrefix = "/api/a/"
 		}
 
-		// wspoldziela semafor - do poprawy
-		httpproxy.HandleRequest(w, r, "http://localhost:8081", routePrefix, cfg, g.sem)
+		httpproxy.HandleRequest(w, r, "http://localhost:8081", routePrefix, g.configBackendA)
 		return
 	}
 
@@ -39,7 +55,7 @@ func (g *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			routePrefix = "/api/b/"
 		}
 
-		httpproxy.HandleRequest(w, r, "http://localhost:8082", routePrefix, cfg, g.sem)
+		httpproxy.HandleRequest(w, r, "http://localhost:8082", routePrefix, g.configBackendB)
 		return
 	}
 
@@ -54,20 +70,13 @@ func main() {
 		Handler: mux,
 	}
 
-	concurrentRequestsSemaphore := make(chan struct{}, cfg.ConcurrencyLimit)
-	for i := 0; i < cfg.ConcurrencyLimit; i++ {
-		concurrentRequestsSemaphore <- struct{}{}
-	}
-
-	// circuitBreaker := circuitBreaker{
-	// 	state:           "Closed",
-	// 	errorCounter:    10,
-	// 	openTimeSeconds: 30 * time.Second,
-	// }
+	var configBackendA = prepareClientConfig(5, 5, 20, 10, 5)
+	var configBackendB = prepareClientConfig(5, 5, 20, 10, 5)
 
 	var h http.Handler
 	h = &gatewayHandler{
-		sem: concurrentRequestsSemaphore,
+		configBackendA: configBackendA,
+		configBackendB: configBackendB,
 	}
 	h = middleware.AccessLog(h)
 	h = middleware.RequestID(h)
