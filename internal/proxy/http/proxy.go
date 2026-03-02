@@ -2,6 +2,7 @@ package httpproxy
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -19,10 +20,12 @@ const (
 )
 
 type CircuitBreaker struct {
-	State           circuitBreakerState
-	ErrorCounter    int
-	OpenTimeSeconds time.Duration
-	Mutex           sync.Mutex
+	State              circuitBreakerState
+	ErrorCapWhenOpened int
+	CurrentErrors      int
+	OpenTimeSeconds    time.Duration
+	Mutex              sync.Mutex
+	openAt             time.Time
 }
 
 type RequestConfig struct {
@@ -81,6 +84,25 @@ func getIsRetryable(method string, statusCode int) bool {
 	return false
 }
 
+func getShouldBreakRequest(circuitBreakerCfg *CircuitBreaker) bool {
+	if circuitBreakerCfg.State == StateOpen {
+		if time.Since(circuitBreakerCfg.openAt) > circuitBreakerCfg.OpenTimeSeconds {
+			circuitBreakerCfg.State = StateHalfOpen
+			return false
+		}
+		if time.Since(circuitBreakerCfg.openAt) < circuitBreakerCfg.OpenTimeSeconds {
+			return true
+		}
+	} else {
+		if circuitBreakerCfg.CurrentErrors >= circuitBreakerCfg.ErrorCapWhenOpened {
+			circuitBreakerCfg.State = StateOpen
+			circuitBreakerCfg.openAt = time.Now()
+			return true
+		}
+	}
+	return false
+}
+
 func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, routePrefix string, cfg RequestConfig) {
 	timeout := time.Duration(cfg.TimeoutInSeconds) * time.Second
 	client := &http.Client{}
@@ -129,6 +151,14 @@ func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 		}
 	}
 
+	shouldBreakRequest := getShouldBreakRequest(cfg.CircuitBreaker)
+
+	if shouldBreakRequest {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("Circuit Breaker err"))
+		return
+	}
+
 	<-cfg.Sem
 	defer func() { cfg.Sem <- struct{}{} }()
 
@@ -143,11 +173,18 @@ func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 	resp, err := client.Do(req)
 
 	if err == nil && getIsRetryable(req.Method, resp.StatusCode) && cfg.MaxRetries > 0 {
+		cfg.CircuitBreaker.CurrentErrors++
 		for i := 0; i < cfg.MaxRetries; i++ {
 			select {
 			case <-time.After(500 * time.Millisecond):
 				if resp != nil {
 					resp.Body.Close()
+				}
+				shouldBreakRequest := getShouldBreakRequest(cfg.CircuitBreaker)
+				if shouldBreakRequest {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					w.Write([]byte("Circuit Breaker err"))
+					return
 				}
 				resp, err = client.Do(req)
 			case <-ctx.Done():
@@ -157,13 +194,22 @@ func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 				return
 			}
 
-			if err == nil {
+			if err == nil && !getIsRetryable(req.Method, resp.StatusCode) {
+				cfg.CircuitBreaker.State = StateClosed
+				cfg.CircuitBreaker.openAt = time.Time{}
+				cfg.CircuitBreaker.CurrentErrors = 0
 				break
+			}
+
+			if err != nil || getIsRetryable(req.Method, resp.StatusCode) {
+				fmt.Println("Increment circuit")
+				cfg.CircuitBreaker.CurrentErrors += 1
 			}
 		}
 	}
 
 	if err != nil {
+		cfg.CircuitBreaker.CurrentErrors += 1
 		errorStatusCode := http.StatusBadGateway
 		errorMessage := "Bad Gateway"
 
@@ -185,6 +231,9 @@ func HandleRequest(w http.ResponseWriter, r *http.Request, serverURL string, rou
 
 	responseHeaders := resp.Header
 	responseStatusCode := resp.StatusCode
+	cfg.CircuitBreaker.CurrentErrors = 0
+	cfg.CircuitBreaker.State = StateClosed
+	cfg.CircuitBreaker.openAt = time.Time{}
 
 	defer resp.Body.Close()
 

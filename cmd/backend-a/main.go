@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"time"
@@ -18,9 +20,19 @@ func (h *helloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Add("X-Backend-Name", "backend-a")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Hello from backend A"))
+	zerotoone := rand.Float64()
+
+	fmt.Println(zerotoone)
+
+	if zerotoone < 0.8 {
+		w.Header().Add("X-Backend-Name", "backend-a")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Hello from backend A"))
+	} else {
+		w.Header().Add("X-Backend-Name", "backend-a")
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte("Error backend A"))
+	}
 }
 
 func (h *errorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

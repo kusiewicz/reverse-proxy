@@ -23,9 +23,9 @@ func prepareClientConfig(concurrencyLimit int, circuitErrorCounter int, circuitO
 	}
 
 	circuitBreaker := &httpproxy.CircuitBreaker{
-		State:           httpproxy.StateClosed,
-		ErrorCounter:    circuitErrorCounter,
-		OpenTimeSeconds: time.Duration(circuitOpenTimeInSeconds) * time.Second,
+		State:              httpproxy.StateClosed,
+		ErrorCapWhenOpened: circuitErrorCounter,
+		OpenTimeSeconds:    time.Duration(circuitOpenTimeInSeconds) * time.Second,
 	}
 
 	return httpproxy.RequestConfig{
@@ -70,8 +70,8 @@ func main() {
 		Handler: mux,
 	}
 
-	var configBackendA = prepareClientConfig(5, 5, 20, 10, 5)
-	var configBackendB = prepareClientConfig(5, 5, 20, 10, 5)
+	var configBackendA = prepareClientConfig(5, 2, 10, 10, 5)
+	var configBackendB = prepareClientConfig(5, 2, 10, 10, 5)
 
 	var h http.Handler
 	h = &gatewayHandler{
